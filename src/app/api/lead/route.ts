@@ -80,6 +80,23 @@ export async function POST(req: Request) {
       );
     }
 
+    // Update the corresponding audit to persist the user's email in both the user_email column
+    // and the metadata JSONB block (resilient fallback).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: auditUpdateError } = await (supabase.from("audits") as any)
+      .update({
+        user_email: leadData.email,
+        metadata: {
+          ...(audit.metadata as Record<string, unknown> || {}),
+          userEmail: leadData.email,
+        },
+      })
+      .eq("id", audit.id);
+
+    if (auditUpdateError) {
+      logger.warn("Failed to update audit with user email, continuing", { error: auditUpdateError });
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from("events") as any).insert({
       event_type: "lead_captured",

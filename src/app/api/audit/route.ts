@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { isPayloadTooLarge, isHoneypotTriggered } from "@/lib/security/validation";
 import { logger } from "@/lib/observability/logger";
+import { pricingCatalog } from "@/lib/engine/catalog";
 
 export async function POST(req: Request) {
   try {
@@ -43,6 +44,43 @@ export async function POST(req: Request) {
     const publicSnapshot = createPublicSnapshot(auditResult);
     const slug = nanoid(10);
 
+    const pricingSnapshot = {
+      pricingVersion: auditResult.catalogVersion,
+      lastUpdated: pricingCatalog.lastUpdated,
+      tools: {} as Record<
+        string,
+        {
+          name: string;
+          plans: Record<
+            string,
+            {
+              name: string;
+              monthlyPricePerSeat: number;
+            }
+          >;
+        }
+      >,
+    };
+
+    for (const entry of inputData.tools) {
+      const tool = pricingCatalog.tools.find((t) => t.id === entry.toolId);
+      if (tool) {
+        pricingSnapshot.tools[tool.id] = {
+          name: tool.name,
+          plans: tool.plans.reduce(
+            (acc, p) => {
+              acc[p.id] = {
+                name: p.name,
+                monthlyPricePerSeat: p.monthlyPricePerSeat,
+              };
+              return acc;
+            },
+            {} as Record<string, { name: string; monthlyPricePerSeat: number }>
+          ),
+        };
+      }
+    }
+
     const supabase = createAdminClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: insertedAudit, error: dbError } = await (supabase.from("audits") as any).insert({
@@ -54,10 +92,12 @@ export async function POST(req: Request) {
       engine_version: "1.0.0",
       total_monthly_savings: auditResult.totalMonthlySavings,
       total_annual_savings: auditResult.totalAnnualSavings,
+      pricing_snapshot: pricingSnapshot,
       metadata: {
         hasHighSavings: publicSnapshot.metadata.hasHighSavings,
         hasOverlappingTools: publicSnapshot.metadata.hasOverlappingTools,
         optimizedToolCount: publicSnapshot.metadata.optimizedToolCount,
+        pricingSnapshot,
       },
     }).select("id").single();
 
