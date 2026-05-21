@@ -2,6 +2,8 @@ import { Resend } from "resend";
 import { PublicAuditSnapshot } from "@/lib/types/audit";
 import { renderAuditEmailHtml } from "./templates/audit-report";
 import { logger } from "@/lib/observability/logger";
+import { renderReAuditNotificationEmailHtml } from "./templates/re-audit-notification";
+import type { AffectedAuditEmailSummary } from "./templates/re-audit-notification";
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_mock_key");
 
@@ -61,6 +63,53 @@ The StackTrim Team
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     logger.error("Email delivery fatal error", { error: errorMessage });
+    return { success: false, error: errorMessage };
+  }
+}
+
+export async function sendReAuditNotificationEmail(
+  email: string,
+  affectedAudits: AffectedAuditEmailSummary[]
+): Promise<EmailResult> {
+  const pluralSuffix = affectedAudits.length > 1 ? "s" : "";
+  const subject = `AI Spend Alert: Pricing updates affect your StackTrim audit${pluralSuffix}`;
+
+  if (!process.env.RESEND_API_KEY) {
+    logger.info("Mock re-audit email dispatch", { to: email, subject, affectedCount: affectedAudits.length });
+    return { success: true, mocked: true };
+  }
+
+  try {
+    const html = renderReAuditNotificationEmailHtml(email, affectedAudits);
+
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || "StackTrim <onboarding@resend.dev>",
+      to: [email],
+      subject,
+      html,
+      text: `
+Hello,
+
+Vendor prices or plan structures have updated in our AI tool catalog since your previous spend audits were performed. 
+We re-evaluated your stack configurations and identified that your savings potential or plan optimization strategies have changed.
+
+${affectedAudits.map(a => `Audit Report ${a.slug}: ${a.explanation}\nLink: ${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/share/${a.slug}/diff\n`).join("\n")}
+
+Best,
+The StackTrim Operations Team
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error("Re-audit email delivery failed", { error: error.message });
+      return { success: false, error: error.message };
+    }
+
+    logger.metric("Re-audit email delivered", { to: email, id: data?.id });
+    return { success: true, id: data?.id };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.error("Re-audit email delivery fatal error", { error: errorMessage });
     return { success: false, error: errorMessage };
   }
 }
