@@ -6,16 +6,17 @@ import type {
   RecommendationType
 } from "@/lib/types/audit";
 import { getToolById } from "@/lib/engine/catalog";
+import type { EngineContext } from "@/lib/engine/catalog";
 import {
   analyzeToolSpend,
   analyzeToolOverlaps
 } from "@/lib/engine/analyzer";
 
-export function initializeToolStates(input: AuditInput): Record<string, OptimizedToolState> {
+export function initializeToolStates(input: AuditInput, context?: EngineContext): Record<string, OptimizedToolState> {
   const states: Record<string, OptimizedToolState> = {};
 
   for (const entry of input.tools) {
-    const catalog = getToolById(entry.toolId);
+    const catalog = getToolById(entry.toolId, context);
     states[entry.toolId] = {
       toolId: entry.toolId,
       toolName: catalog?.name || entry.toolId,
@@ -35,9 +36,10 @@ export function initializeToolStates(input: AuditInput): Record<string, Optimize
 export function analyzeCurrentState(
   state: OptimizedToolState,
   teamSize: number,
-  typeFilter: RecommendationType
+  typeFilter: RecommendationType,
+  context?: EngineContext
 ): Recommendation[] {
-  const catalogEntry = getToolById(state.toolId);
+  const catalogEntry = getToolById(state.toolId, context);
   if (!catalogEntry) return [];
 
   const currentEntry: ToolEntry = {
@@ -48,20 +50,20 @@ export function analyzeCurrentState(
     useCases: [],
   };
 
-  const allRecs = analyzeToolSpend(currentEntry, teamSize, catalogEntry);
+  const allRecs = analyzeToolSpend(currentEntry, teamSize, catalogEntry, context);
   return allRecs.filter(r => r.type === typeFilter);
 }
 
-export function runOptimizationPipeline(input: AuditInput): {
+export function runOptimizationPipeline(input: AuditInput, context?: EngineContext): {
   recommendations: Recommendation[];
   toolStates: Record<string, OptimizedToolState>;
   optimizationOrder: string[];
 } {
-  const toolStates = initializeToolStates(input);
+  const toolStates = initializeToolStates(input, context);
   const recommendations: Recommendation[] = [];
   const optimizationOrder: string[] = [];
 
-  const consolidationCandidates = analyzeToolOverlaps(input.tools, getToolById);
+  const consolidationCandidates = analyzeToolOverlaps(input.tools, (toolId) => getToolById(toolId, context));
   for (const rec of consolidationCandidates) {
     const state = toolStates[rec.toolId];
     if (!state || state.currentSpend === 0) continue;
@@ -84,7 +86,7 @@ export function runOptimizationPipeline(input: AuditInput): {
     const state = toolStates[toolId];
     if (state.currentSpend === 0) continue;
 
-    const downgradeRecs = analyzeCurrentState(state, input.teamSize, "downgrade");
+    const downgradeRecs = analyzeCurrentState(state, input.teamSize, "downgrade", context);
     if (downgradeRecs.length > 0) {
       const rec = downgradeRecs[0];
       const preSpend = state.currentSpend;
@@ -107,7 +109,7 @@ export function runOptimizationPipeline(input: AuditInput): {
     const state = toolStates[toolId];
     if (state.currentSpend === 0) continue;
 
-    const rightsizeRecs = analyzeCurrentState(state, input.teamSize, "rightsize");
+    const rightsizeRecs = analyzeCurrentState(state, input.teamSize, "rightsize", context);
     if (rightsizeRecs.length > 0) {
       const rec = rightsizeRecs[0];
       const preSpend = state.currentSpend;

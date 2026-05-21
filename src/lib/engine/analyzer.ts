@@ -57,7 +57,8 @@ function generateAuditId(): string {
 export function analyzeToolSpend(
   entry: ToolEntry,
   teamSize: number,
-  catalogEntry: ToolCatalogEntry
+  catalogEntry: ToolCatalogEntry,
+  context?: EngineContext
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];
   const pricingFresh = isPricingFresh(catalogEntry.lastVerified);
@@ -347,14 +348,15 @@ export function analyzeToolOverlaps(
 
 function generateKeepRecommendations(
   entries: ToolEntry[],
-  existingRecToolIds: Set<string>
+  existingRecToolIds: Set<string>,
+  context?: EngineContext
 ): Recommendation[] {
   const keeps: Recommendation[] = [];
 
   for (const entry of entries) {
     if (existingRecToolIds.has(entry.toolId)) continue;
 
-    const catalogEntry = getToolById(entry.toolId);
+    const catalogEntry = getToolById(entry.toolId, context);
     if (!catalogEntry) continue;
 
     const currentPlanIndex = catalogEntry.plans.findIndex(
@@ -384,23 +386,26 @@ function generateKeepRecommendations(
   return keeps;
 }
 
-export function generateAuditResult(input: AuditInput): AuditResult {
+import type { EngineContext } from "@/lib/engine/catalog";
+
+export function generateAuditResult(input: AuditInput, context?: EngineContext): AuditResult {
   const auditId = generateAuditId();
+  const currentCatalogVersion = context?.catalog?.version || pricingCatalog.version;
 
   const {
     recommendations: savingsRecs,
     toolStates,
     optimizationOrder
-  } = runOptimizationPipeline(input);
+  } = runOptimizationPipeline(input, context);
 
   const allRecommendations: Recommendation[] = [...savingsRecs];
 
   const recsWithSavings = new Set(savingsRecs.map(r => r.toolId));
-  const keepRecs = generateKeepRecommendations(input.tools, recsWithSavings);
+  const keepRecs = generateKeepRecommendations(input.tools, recsWithSavings, context);
   allRecommendations.push(...keepRecs);
 
   for (const toolEntry of input.tools) {
-    const catalogEntry = getToolById(toolEntry.toolId);
+    const catalogEntry = getToolById(toolEntry.toolId, context);
     if (catalogEntry?.hasStartupCredits && catalogEntry.creditNotes) {
       const state = toolStates[toolEntry.toolId];
       allRecommendations.push({
@@ -434,7 +439,7 @@ export function generateAuditResult(input: AuditInput): AuditResult {
 
   allRecommendations.forEach((rec, index) => {
     rec.priority = index + 1;
-    rec.catalogVersion = pricingCatalog.version;
+    rec.catalogVersion = currentCatalogVersion;
   });
 
   const totalMonthlySpend = input.tools.reduce((sum, t) => sum + t.monthlySpend, 0);
@@ -478,7 +483,7 @@ export function generateAuditResult(input: AuditInput): AuditResult {
     totalAnnualSavings,
     savingsPercentage,
     createdAt: new Date().toISOString(),
-    catalogVersion: pricingCatalog.version,
+    catalogVersion: currentCatalogVersion,
     hasOverlappingTools: allRecommendations.some(r => r.type === "consolidate"),
     optimizedToolCount: keepRecs.length,
     usedManualOverride,

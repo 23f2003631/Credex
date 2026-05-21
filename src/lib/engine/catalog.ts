@@ -432,17 +432,25 @@ export const pricingCatalog: PricingCatalog = {
 // Lookup helpers
 // ---------------------------------------------------------------------------
 
+export interface EngineContext {
+  catalog?: PricingCatalog;
+  pricingVersion?: string;
+  executionMode?: 'live' | 'historical' | 'comparison';
+}
+
 /** Find a tool by ID */
-export function getToolById(toolId: string): ToolCatalogEntry | undefined {
-  return pricingCatalog.tools.find((t) => t.id === toolId);
+export function getToolById(toolId: string, context?: EngineContext): ToolCatalogEntry | undefined {
+  const cat = context?.catalog || pricingCatalog;
+  return cat.tools.find((t) => t.id === toolId);
 }
 
 /** Find a plan tier for a tool */
 export function getPlanForTool(
   toolId: string,
-  planId: string
+  planId: string,
+  context?: EngineContext
 ): { tool: ToolCatalogEntry; plan: (typeof tools)[number]["plans"][number] } | undefined {
-  const tool = getToolById(toolId);
+  const tool = getToolById(toolId, context);
   if (!tool) return undefined;
   const plan = tool.plans.find((p) => p.id === planId);
   if (!plan) return undefined;
@@ -450,27 +458,29 @@ export function getPlanForTool(
 }
 
 /** Get all tools in a category */
-export function getToolsByCategory(category: string): ToolCatalogEntry[] {
-  return pricingCatalog.tools.filter((t) => t.category === category);
+export function getToolsByCategory(category: string, context?: EngineContext): ToolCatalogEntry[] {
+  const cat = context?.catalog || pricingCatalog;
+  return cat.tools.filter((t) => t.category === category);
 }
 
 /** Get all unique categories */
-export function getCategories(): string[] {
-  return [...new Set(pricingCatalog.tools.map((t) => t.category))];
+export function getCategories(context?: EngineContext): string[] {
+  const cat = context?.catalog || pricingCatalog;
+  return [...new Set(cat.tools.map((t) => t.category))];
 }
 
 /** Get the cheapest non-free plan for a tool (useful for downgrade recommendations) */
-export function getCheapestPaidPlan(toolId: string) {
-  const tool = getToolById(toolId);
+export function getCheapestPaidPlan(toolId: string, context?: EngineContext) {
+  const tool = getToolById(toolId, context);
   if (!tool) return undefined;
   return tool.plans.find((p) => p.monthlyPricePerSeat > 0);
 }
 
 /** Get all tools that share the same alternatives list */
-export function getAlternatives(toolId: string): ToolCatalogEntry[] {
-  const tool = getToolById(toolId);
+export function getAlternatives(toolId: string, context?: EngineContext): ToolCatalogEntry[] {
+  const tool = getToolById(toolId, context);
   if (!tool?.alternatives) return [];
   return tool.alternatives
-    .map(getToolById)
+    .map((id) => getToolById(id, context))
     .filter((t): t is ToolCatalogEntry => t !== undefined);
 }
