@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   TrendingUp,
-  TrendingDown,
   CheckCircle2,
   AlertCircle,
   Clock,
@@ -14,7 +13,6 @@ import {
   ArrowLeftRight,
   ShieldCheck,
   ExternalLink,
-  ChevronRight,
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
@@ -459,7 +457,7 @@ export function ReAuditDiffResults({
                 transition={{ duration: 0.15 }}
                 className="border-t border-border/30 divide-y divide-border/20 bg-background"
               >
-                {unchangedTools.map(({ toolId, histRec, liveRec }) => (
+                {unchangedTools.map(({ toolId, liveRec }) => (
                   <div key={toolId} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
                     <div>
                       <span className="font-bold text-foreground">{liveRec.toolName}</span>

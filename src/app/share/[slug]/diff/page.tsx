@@ -62,7 +62,7 @@ export default async function ReAuditDiffPage({
   try {
     const snapshot = typeof rawSnapshot === "string" ? JSON.parse(rawSnapshot) : rawSnapshot;
     historicalCatalog = reconstructCatalogFromSnapshot(snapshot);
-  } catch (err) {
+  } catch {
     historicalCatalog = reconstructCatalogFromSnapshot(null);
   }
 
