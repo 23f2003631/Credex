@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     }
 
     const eligibleAudits = (audits || []).filter(
-      (a) => a.user_email || a.metadata?.userEmail
+      (a: any) => a.user_email || a.metadata?.userEmail
     );
 
     const affectedByUser: Record<
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
           });
         }
       } catch (err) {
-        logger.error("Error checking audit diff", err, { slug: audit.slug });
+        logger.error(`Error checking audit diff: ${err instanceof Error ? err.message : String(err)}`, { slug: audit.slug });
       }
     }
 
@@ -229,7 +229,7 @@ export async function POST(req: Request) {
     return NextResponse.json(executionSummary, { status: 200 });
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : "Unknown fatal error";
-    logger.error("Fatal error during change detection run", error);
+    logger.error("Fatal error during change detection run", { error: error instanceof Error ? error.stack || error.message : String(error) });
     return NextResponse.json({ error: errMessage }, { status: 500 });
   } finally {
     // 5. Release Concurrency Lock
