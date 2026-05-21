@@ -58,6 +58,7 @@ export function analyzeToolSpend(
   entry: ToolEntry,
   teamSize: number,
   catalogEntry: ToolCatalogEntry,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   context?: EngineContext
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];

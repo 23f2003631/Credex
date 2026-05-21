@@ -6,6 +6,33 @@ import { sendReAuditNotificationEmail } from "@/lib/email/resend";
 import type { AffectedAuditEmailSummary } from "@/lib/email/templates/re-audit-notification";
 import { reauditConfig } from "@/lib/config/reaudit";
 import { logger } from "@/lib/observability/logger";
+import type { AuditInput } from "@/lib/types/audit";
+
+interface AuditMetadata {
+  active?: boolean;
+  updatedAt?: string;
+  userEmail?: string;
+  pricingSnapshot?: string | Record<string, unknown>;
+  lastNotificationTimestamp?: string;
+  lastNotificationReason?: string;
+  lastNotificationDelta?: number;
+  [key: string]: unknown;
+}
+
+interface DbAuditRecord {
+  id: string;
+  slug: string;
+  user_email: string | null;
+  pricing_snapshot: string | Record<string, unknown> | null;
+  input_data: AuditInput;
+  result_data: Record<string, unknown>;
+  public_snapshot: Record<string, unknown>;
+  catalog_version: string;
+  engine_version: string;
+  total_monthly_savings: number;
+  total_annual_savings: number;
+  metadata: AuditMetadata | null;
+}
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "stacktrim-admin-secret-dev";
 
@@ -31,10 +58,12 @@ export async function POST(req: Request) {
     // 2. Serverless Concurrency Lock
     // Fetch or create lock record
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let { data: lockRecord, error: lockFetchError } = await (supabase.from("audits") as any)
+    const { data: initialLockRecord, error: lockFetchError } = await (supabase.from("audits") as any)
       .select("id, metadata")
       .eq("slug", "job-lock-metadata")
       .maybeSingle();
+
+    let lockRecord = initialLockRecord;
 
     if (lockFetchError) {
       logger.error("Failed to query job lock record", { error: lockFetchError });
@@ -98,7 +127,7 @@ export async function POST(req: Request) {
 
     // 3. Change Detection Run
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: audits, error: auditsFetchError } = await (supabase.from("audits") as any)
+    const { data: fetchedAudits, error: auditsFetchError } = await (supabase.from("audits") as any)
       .select("*")
       .not("slug", "eq", "job-lock-metadata");
 
@@ -107,19 +136,21 @@ export async function POST(req: Request) {
       throw auditsFetchError;
     }
 
+    const audits = fetchedAudits as DbAuditRecord[] | null;
+
     const eligibleAudits = (audits || []).filter(
-      (a: any) => a.user_email || a.metadata?.userEmail
+      (a) => a.user_email || a.metadata?.userEmail
     );
 
     const affectedByUser: Record<
       string,
       {
         summary: AffectedAuditEmailSummary[];
-        auditsToUpdate: Array<{ id: string; metadata: any; delta: number; isRecChange: boolean }>;
+        auditsToUpdate: Array<{ id: string; metadata: AuditMetadata | null; delta: number; isRecChange: boolean }>;
       }
     > = {};
 
-    let totalChecked = eligibleAudits.length;
+    const totalChecked = eligibleAudits.length;
 
     for (const audit of eligibleAudits) {
       const email = audit.user_email || audit.metadata?.userEmail;

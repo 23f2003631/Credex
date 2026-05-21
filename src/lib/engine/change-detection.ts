@@ -15,11 +15,30 @@ export interface ChangeDetectionResult {
   explanation: string;
 }
 
+interface SnapshotPlan {
+  name?: string;
+  monthlyPricePerSeat?: number;
+  [key: string]: unknown;
+}
+
+interface SnapshotTool {
+  name?: string;
+  plans?: Record<string, SnapshotPlan>;
+  [key: string]: unknown;
+}
+
+export interface CatalogSnapshot {
+  tools?: Record<string, SnapshotTool>;
+  lastUpdated?: string;
+  pricingVersion?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Safely reconstructs a full historical PricingCatalog from a stored lightweight snapshot.
  * Fallbacks to activeCatalog for missing or unresolvable details.
  */
-export function reconstructCatalogFromSnapshot(snapshot: any): PricingCatalog {
+export function reconstructCatalogFromSnapshot(snapshot: CatalogSnapshot | null | undefined): PricingCatalog {
   if (!snapshot || !snapshot.tools) {
     return activeCatalog;
   }
@@ -35,10 +54,10 @@ export function reconstructCatalogFromSnapshot(snapshot: any): PricingCatalog {
           const sPlan = sTool.plans?.[p.id];
           return {
             ...p,
-            monthlyPricePerSeat: sPlan !== undefined ? sPlan.monthlyPricePerSeat : p.monthlyPricePerSeat,
+            monthlyPricePerSeat: sPlan !== undefined && sPlan.monthlyPricePerSeat !== undefined ? sPlan.monthlyPricePerSeat : p.monthlyPricePerSeat,
           };
         })
-      : Object.entries(sTool.plans || {}).map(([planId, planData]: [string, any]) => ({
+      : Object.entries(sTool.plans || {}).map(([planId, planData]) => ({
           id: planId,
           name: planData.name || planId,
           monthlyPricePerSeat: planData.monthlyPricePerSeat ?? 0,
